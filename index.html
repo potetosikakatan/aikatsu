@@ -22,6 +22,24 @@
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdwamN3amlqaXh5c2Ftamp3eG53Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzMzY5ODEsImV4cCI6MjEwNjkxMjk4MX0.efXns_bbYBZrMgWR8revaEUGwc_dyHZgQJ5VxZuuSpc';
     const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+    // デフォルト・サンプルカード一覧（一括インポート用データ）
+    const DEFAULT_PRESET_CARDS = [
+      { card_id: '01-01', name: 'オーロラキスキャミソール', rarity: 'PR', category: 'トップス', coord: 'オーロラキスコーデ', img_url: '' },
+      { card_id: '01-02', name: 'オーロラキスドレープスカート', rarity: 'PR', category: 'ボトムス', coord: 'オーロラキスコーデ', img_url: '' },
+      { card_id: '01-03', name: 'オーロラキスバレエシューズ', rarity: 'PR', category: 'シューズ', coord: 'オーロラキスコーデ', img_url: '' },
+      { card_id: '01-04', name: 'オーロラキスリボン', rarity: 'PR', category: 'アクセサリー', coord: 'オーロラキスコーデ', img_url: '' },
+      { card_id: '01-05', name: 'ピンクパレードベスト', rarity: 'R', category: 'トップス', coord: 'ピンクパレードコーデ', img_url: '' },
+      { card_id: '01-06', name: 'ピンクパレードスカート', rarity: 'R', category: 'ボトムス', coord: 'ピンクパレードコーデ', img_url: '' },
+      { card_id: '01-07', name: 'ピンクパレードブーツ', rarity: 'R', category: 'シューズ', coord: 'ピンクパレードコーデ', img_url: '' },
+      { card_id: '01-08', name: 'ピンクステージキャミソール', rarity: 'N', category: 'トップス', coord: 'ピンクステージコーデ', img_url: '' },
+      { card_id: '01-09', name: 'ピンクステージスカート', rarity: 'N', category: 'ボトムス', coord: 'ピンクステージコーデ', img_url: '' },
+      { card_id: '01-10', name: 'ピンクステージサンダル', rarity: 'N', category: 'シューズ', coord: 'ピンクステージコーデ', img_url: '' },
+      { card_id: '01-11', name: '天の川コズミックトップス', rarity: 'PR', category: 'トップス', coord: '天の川コズミックコーデ', img_url: '' },
+      { card_id: '01-12', name: '天の川コズミックスカート', rarity: 'PR', category: 'ボトムス', coord: '天の川コズミックコーデ', img_url: '' },
+      { card_id: '01-13', name: '天の川コズミックブーツ', rarity: 'PR', category: 'シューズ', coord: '天の川コズミックコーデ', img_url: '' },
+      { card_id: '01-14', name: '天の川コズミックカチューシャ', rarity: 'PR', category: 'アクセサリー', coord: '天の川コズミックコーデ', img_url: '' },
+    ];
+
     const THEMES = {
       pink: { bg: 'bg-pink-50', primary: 'bg-pink-500', text: 'text-pink-500', border: 'border-pink-200', activeTab: 'bg-pink-500 text-white' },
       lavender: { bg: 'bg-purple-50', primary: 'bg-purple-500', text: 'text-purple-500', border: 'border-purple-200', activeTab: 'bg-purple-500 text-white' },
@@ -36,15 +54,14 @@
       const [shops, setShops] = useState([]);
       const [seqLogs, setSeqLogs] = useState([]);
       const [loading, setLoading] = useState(true);
-      const [activeTab, setActiveTab] = useState('cards'); // 'cards' | 'trade' | 'coord' | 'shops' | 'sequence' | 'settings'
+      const [importing, setImporting] = useState(false);
+      const [activeTab, setActiveTab] = useState('cards');
       const [theme, setTheme] = useState('pink');
 
-      // Filters
       const [searchQuery, setSearchQuery] = useState('');
       const [categoryFilter, setCategoryFilter] = useState('すべて');
       const [rarityFilter, setRarityFilter] = useState('すべて');
 
-      // Modals & Refs
       const [isAddModalOpen, setIsAddModalOpen] = useState(false);
       const [isShopModalOpen, setIsShopModalOpen] = useState(false);
       const [copiedText, setCopiedText] = useState(false);
@@ -68,6 +85,32 @@
         if (savedSeq) setSeqLogs(JSON.parse(savedSeq));
       }, []);
 
+      // 一括インポート処理
+      const handlePresetImport = async () => {
+        if (!confirm('サンプルカードセットを一括追加しますか？（既存のカードは消えません）')) return;
+        setImporting(true);
+        
+        const existingIds = new Set(cards.map(c => c.card_id));
+        const newItems = DEFAULT_PRESET_CARDS
+          .filter(c => !existingIds.has(c.card_id))
+          .map(c => ({ ...c, count: 0, give: 0, want: false }));
+
+        if (newItems.length === 0) {
+          alert('すでにすべてのサンプルカードが追加されています！');
+          setImporting(false);
+          return;
+        }
+
+        const { error } = await supabase.from('cards').insert(newItems);
+        if (!error) {
+          alert(`${newItems.length} 件のカードを自動一括追加しました！✨`);
+          fetchCards();
+        } else {
+          alert('追加中にエラーが発生しました');
+        }
+        setImporting(false);
+      };
+
       const saveShopsToLocal = (newShops) => {
         setShops(newShops);
         localStorage.setItem('aikatsu_shops', JSON.stringify(newShops));
@@ -80,7 +123,6 @@
 
       const themeStyle = THEMES[theme] || THEMES.pink;
 
-      // Card Updates
       const updateCardState = async (id, fields) => {
         setCards(prev => prev.map(c => c.id === id ? { ...c, ...fields } : c));
         await supabase.from('cards').update(fields).eq('id', id);
@@ -119,7 +161,6 @@
         saveSeqToLocal([...seqLogs, { ...card, loggedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
       };
 
-      // Generate Trade Text
       const getTradeText = () => {
         const wants = cards.filter(c => c.want).map(c => `【求】${c.card_id} ${c.name}`).join('\n');
         const gives = cards.filter(c => c.give > 0).map(c => `【譲】${c.card_id} ${c.name} (x${c.give})`).join('\n');
@@ -132,7 +173,6 @@
         setTimeout(() => setCopiedText(false), 2000);
       };
 
-      // Export Image
       const exportTradeImage = () => {
         if (!tradeImageRef.current) return;
         html2canvas(tradeImageRef.current).then(canvas => {
@@ -143,7 +183,6 @@
         });
       };
 
-      // Filters & Aggregations
       const filteredCards = useMemo(() => {
         return cards.filter(card => {
           const matchQuery = card.name.includes(searchQuery) || card.card_id.includes(searchQuery) || (card.coord && card.coord.includes(searchQuery));
@@ -180,7 +219,7 @@
                 <h1 className="text-lg font-extrabold text-gray-800">アイカツカード帳 ✨</h1>
               </div>
               <button onClick={() => setIsAddModalOpen(true)} className={`${themeStyle.primary} text-white px-3 py-1.5 rounded-xl font-bold text-xs shadow-sm flex items-center gap-1`}>
-                <i className="fa-solid fa-plus"></i> カード追加
+                <i className="fa-solid fa-plus"></i> 追加
               </button>
             </div>
 
@@ -190,7 +229,7 @@
                 <i className="fa-solid fa-layer-group mr-1"></i>カード
               </button>
               <button onClick={() => setActiveTab('trade')} className={`flex-1 py-2 px-1 rounded-xl transition whitespace-nowrap ${activeTab === 'trade' ? themeStyle.activeTab : ''}`}>
-                <i className="fa-solid fa-right-left mr-1"></i>譲求トレード
+                <i className="fa-solid fa-right-left mr-1"></i>譲求
               </button>
               <button onClick={() => setActiveTab('coord')} className={`flex-1 py-2 px-1 rounded-xl transition whitespace-nowrap ${activeTab === 'coord' ? themeStyle.activeTab : ''}`}>
                 <i className="fa-solid fa-shirt mr-1"></i>コーデ
@@ -209,6 +248,7 @@
             {/* TAB 1: CARDS */}
             {activeTab === 'cards' && (
               <div>
+                {/* Auto Import Banner if empty or manual click */}
                 <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 mb-4">
                   <div className="flex justify-between items-baseline mb-1">
                     <span className="text-xs font-bold text-gray-400">コンプリート率</span>
@@ -223,6 +263,16 @@
                     <div><div className="text-gray-400 text-[10px]">欲しい</div><div className="text-pink-500">{cards.filter(c=>c.want).length}</div></div>
                   </div>
                 </div>
+
+                {/* Auto Import Preset Button */}
+                <button
+                  onClick={handlePresetImport}
+                  disabled={importing}
+                  className="w-full bg-indigo-50 border border-indigo-200 text-indigo-600 font-bold py-2.5 rounded-2xl text-xs mb-4 shadow-xs flex items-center justify-center gap-1.5"
+                >
+                  <i className="fa-solid fa-file-import"></i>
+                  {importing ? '登録中...' : '初期カードデータを一括自動追加！'}
+                </button>
 
                 {/* Filters */}
                 <div className="bg-white rounded-2xl p-3 shadow-sm border border-gray-100 mb-4 space-y-2">
@@ -247,7 +297,9 @@
                 {loading ? (
                   <div className="text-center py-10 text-gray-400 font-bold">読み込み中...</div>
                 ) : filteredCards.length === 0 ? (
-                  <div className="text-center py-10 text-gray-400 text-xs font-bold">該当するカードがありません</div>
+                  <div className="text-center py-10 text-gray-400 text-xs font-bold">
+                    登録されているカードがありません<br/>「初期カードデータを一括自動追加！」を押してみてください✨
+                  </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-3">
                     {filteredCards.map(card => (
@@ -295,19 +347,18 @@
               </div>
             )}
 
-            {/* TAB 2: TRADE (求・譲リスト画像＆テキストコピー) */}
+            {/* TAB 2: TRADE */}
             {activeTab === 'trade' && (
               <div className="space-y-4">
                 <div className="flex gap-2">
                   <button onClick={copyTradeText} className="flex-1 bg-white border border-gray-200 text-gray-700 py-2.5 rounded-2xl font-bold text-xs shadow-sm flex items-center justify-center gap-1.5">
-                    <i className="fa-solid fa-copy"></i> {copiedText ? 'コピーしました！' : '文章をコピー'}
+                    <i className="fa-solid fa-copy"></i> {copiedText ? 'コピー完了！' : '文章をコピー'}
                   </button>
                   <button onClick={exportTradeImage} className={`flex-1 ${themeStyle.primary} text-white py-2.5 rounded-2xl font-bold text-xs shadow-sm flex items-center justify-center gap-1.5`}>
                     <i className="fa-solid fa-image"></i> 画像を保存
                   </button>
                 </div>
 
-                {/* Trade Preview Canvas */}
                 <div ref={tradeImageRef} className="bg-white p-4 rounded-3xl border border-gray-200 shadow-sm space-y-4">
                   <div className="text-center border-b pb-2">
                     <h2 className="font-extrabold text-gray-800 text-sm">✨ アイカツ！トレード募集リスト ✨</h2>
@@ -375,7 +426,7 @@
               </div>
             )}
 
-            {/* TAB 4: SHOPS (お店メモ・あそべるお店) */}
+            {/* TAB 4: SHOPS */}
             {activeTab === 'shops' && (
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
@@ -420,7 +471,7 @@
               </div>
             )}
 
-            {/* TAB 5: SEQUENCE (配列記録) */}
+            {/* TAB 5: SEQUENCE */}
             {activeTab === 'sequence' && (
               <div className="space-y-4">
                 <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 space-y-3">
@@ -429,7 +480,6 @@
                     <button onClick={() => saveSeqToLocal([])} className="text-xs text-red-400 font-bold">クリア</button>
                   </div>
                   
-                  {/* Sequence History */}
                   <div className="flex gap-2 overflow-x-auto pb-2">
                     {seqLogs.length === 0 ? (
                       <div className="text-xs text-gray-400 font-bold py-2">カードを選択して排出順を記録します</div>
@@ -463,6 +513,18 @@
             {activeTab === 'settings' && (
               <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 space-y-4">
                 <h3 className="font-bold text-sm text-gray-800">アプリ設定</h3>
+
+                <div>
+                  <label className="text-xs font-bold text-gray-500 block mb-2">データ管理</label>
+                  <button
+                    onClick={handlePresetImport}
+                    disabled={importing}
+                    className="w-full bg-indigo-50 border border-indigo-200 text-indigo-600 font-bold py-2.5 rounded-xl text-xs shadow-xs"
+                  >
+                    {importing ? '登録中...' : '初期カードデータを一括自動追加する'}
+                  </button>
+                </div>
+
                 <div>
                   <label className="text-xs font-bold text-gray-500 block mb-2">テーマカラー変更</label>
                   <div className="grid grid-cols-3 gap-2">
@@ -480,16 +542,16 @@
               </div>
             )}
 
-            {/* Modal: Add Card */}
+            {/* Modals */}
             {isAddModalOpen && (
               <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
                 <div className="bg-white rounded-3xl p-5 w-full max-w-sm shadow-xl relative">
                   <button onClick={() => setIsAddModalOpen(false)} className="absolute top-4 right-4 text-gray-400">✕</button>
                   <h3 className="font-bold text-lg mb-4">カード新規登録</h3>
                   <form onSubmit={handleAddCard} className="space-y-3 text-xs font-bold text-gray-600">
-                    <input type="text" placeholder="カード番号 (例: E1-01)" value={newCard.card_id} onChange={e=>setNewCard({...newCard, card_id: e.target.value})} className="w-full p-2.5 rounded-xl border bg-gray-50" required />
+                    <input type="text" placeholder="カード番号 (例: 01-01)" value={newCard.card_id} onChange={e=>setNewCard({...newCard, card_id: e.target.value})} className="w-full p-2.5 rounded-xl border bg-gray-50" required />
                     <input type="text" placeholder="カード名" value={newCard.name} onChange={e=>setNewCard({...newCard, name: e.target.value})} className="w-full p-2.5 rounded-xl border bg-gray-50" required />
-                    <input type="text" placeholder="コーデ名 (例: オーロラキス)" value={newCard.coord} onChange={e=>setNewCard({...newCard, coord: e.target.value})} className="w-full p-2.5 rounded-xl border bg-gray-50" />
+                    <input type="text" placeholder="コーデ名 (例: オーロラキスコーデ)" value={newCard.coord} onChange={e=>setNewCard({...newCard, coord: e.target.value})} className="w-full p-2.5 rounded-xl border bg-gray-50" />
                     <div className="grid grid-cols-2 gap-2">
                       <select value={newCard.category} onChange={e=>setNewCard({...newCard, category: e.target.value})} className="p-2.5 rounded-xl border bg-gray-50">
                         <option>トップス</option><option>ボトムス</option><option>シューズ</option><option>アクセサリー</option>
@@ -505,20 +567,19 @@
               </div>
             )}
 
-            {/* Modal: Add Shop */}
             {isShopModalOpen && (
               <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
                 <div className="bg-white rounded-3xl p-5 w-full max-w-sm shadow-xl relative">
                   <button onClick={() => setIsShopModalOpen(false)} className="absolute top-4 right-4 text-gray-400">✕</button>
                   <h3 className="font-bold text-lg mb-4">お店を登録</h3>
                   <form onSubmit={handleAddShop} className="space-y-3 text-xs font-bold text-gray-600">
-                    <input type="text" placeholder="店名 (例: モーリーファンタジー〇〇店)" value={newShop.name} onChange={e=>setNewShop({...newShop, name: e.target.value})} className="w-full p-2.5 rounded-xl border bg-gray-50" required />
+                    <input type="text" placeholder="店名 (例: モーリーファンタジー)" value={newShop.name} onChange={e=>setNewShop({...newShop, name: e.target.value})} className="w-full p-2.5 rounded-xl border bg-gray-50" required />
                     <input type="text" placeholder="住所・アクセス" value={newShop.address} onChange={e=>setNewShop({...newShop, address: e.target.value})} className="w-full p-2.5 rounded-xl border bg-gray-50" />
                     <div className="flex items-center gap-2">
                       <label>筐体台数:</label>
                       <input type="number" min="1" value={newShop.machine_count} onChange={e=>setNewShop({...newShop, machine_count: parseInt(e.target.value) || 1})} className="w-20 p-2 rounded-xl border bg-gray-50" />
                     </div>
-                    <textarea placeholder="メモ (例: 混雑状況、録画台の有無など)" value={newShop.memo} onChange={e=>setNewShop({...newShop, memo: e.target.value})} className="w-full p-2.5 rounded-xl border bg-gray-50 h-20" />
+                    <textarea placeholder="メモ (例: 録画台あり)" value={newShop.memo} onChange={e=>setNewShop({...newShop, memo: e.target.value})} className="w-full p-2.5 rounded-xl border bg-gray-50 h-20" />
                     <button type="submit" className={`w-full ${themeStyle.primary} text-white py-3 rounded-xl font-bold`}>登録する</button>
                   </form>
                 </div>
