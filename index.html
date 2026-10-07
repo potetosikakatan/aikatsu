@@ -11,28 +11,45 @@
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
-<body class="bg-pink-50 text-gray-800 pb-20">
+<body class="bg-slate-50 text-gray-800 pb-20">
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect } = React;
+    const { useState, useEffect, useMemo } = React;
 
     const SUPABASE_URL = 'https://gpjcwjijixsamjjwxnw.supabase.co';
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdwamN3amlqaXh5c2Ftamp3eG53Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzMzY5ODEsImV4cCI6MjEwNjkxMjk4MX0.efXns_bbYBZrMgWR8revaEUGwc_dyHZgQJ5VxZuuSpc';
     const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+    const THEMES = {
+      pink: { bg: 'bg-pink-50', primary: 'bg-pink-500', text: 'text-pink-500', border: 'border-pink-200', activeTab: 'bg-pink-500 text-white' },
+      lavender: { bg: 'bg-purple-50', primary: 'bg-purple-500', text: 'text-purple-500', border: 'border-purple-200', activeTab: 'bg-purple-500 text-white' },
+      blue: { bg: 'bg-sky-50', primary: 'bg-sky-500', text: 'text-sky-500', border: 'border-sky-200', activeTab: 'bg-sky-500 text-white' },
+      mint: { bg: 'bg-emerald-50', primary: 'bg-emerald-500', text: 'text-emerald-500', border: 'border-emerald-200', activeTab: 'bg-emerald-500 text-white' },
+      orange: { bg: 'bg-orange-50', primary: 'bg-orange-500', text: 'text-orange-500', border: 'border-orange-200', activeTab: 'bg-orange-500 text-white' },
+      gray: { bg: 'bg-gray-100', primary: 'bg-gray-700', text: 'text-gray-700', border: 'border-gray-300', activeTab: 'bg-gray-700 text-white' },
+    };
+
     function App() {
       const [cards, setCards] = useState([]);
-      const [isAddModalOpen, setIsAddModalOpen] = useState(false);
       const [loading, setLoading] = useState(true);
+      const [activeTab, setActiveTab] = useState('cards'); // 'cards' | 'trade' | 'coord' | 'settings'
+      const [theme, setTheme] = useState('pink');
 
+      // Filters
+      const [searchQuery, setSearchQuery] = useState('');
+      const [categoryFilter, setCategoryFilter] = useState('すべて');
+      const [rarityFilter, setRarityFilter] = useState('すべて');
+
+      // Modal
+      const [isAddModalOpen, setIsAddModalOpen] = useState(false);
       const [newCard, setNewCard] = useState({
         card_id: '', name: '', rarity: 'PR', category: 'トップス', coord: '', img_url: ''
       });
 
       const fetchCards = async () => {
         setLoading(true);
-        const { data, error } = await supabase.from('cards').select('*').order('created_at', { ascending: false });
+        const { data, error } = await supabase.from('cards').select('*').order('card_id', { ascending: true });
         if (!error && data) setCards(data);
         setLoading(false);
       };
@@ -41,10 +58,12 @@
         fetchCards();
       }, []);
 
-      const updateCount = async (id, delta, currentCount) => {
-        const newCount = Math.max(0, currentCount + delta);
-        setCards(cards.map(c => c.id === id ? { ...c, count: newCount } : c));
-        await supabase.from('cards').update({ count: newCount }).eq('id', id);
+      const themeStyle = THEMES[theme] || THEMES.pink;
+
+      // Card count update
+      const updateCardState = async (id, fields) => {
+        setCards(prev => prev.map(c => c.id === id ? { ...c, ...fields } : c));
+        await supabase.from('cards').update(fields).eq('id', id);
       };
 
       const handleAddCard = async (e) => {
@@ -57,64 +76,282 @@
         }]).select();
 
         if (!error && data) {
-          setCards([data[0], ...cards]);
+          setCards([...cards, data[0]]);
           setIsAddModalOpen(false);
           setNewCard({ card_id: '', name: '', rarity: 'PR', category: 'トップス', coord: '', img_url: '' });
         }
       };
 
+      // Filtered cards
+      const filteredCards = useMemo(() => {
+        return cards.filter(card => {
+          const matchQuery = card.name.includes(searchQuery) || card.card_id.includes(searchQuery) || (card.coord && card.coord.includes(searchQuery));
+          const matchCategory = categoryFilter === 'すべて' || card.category === categoryFilter;
+          const matchRarity = rarityFilter === 'すべて' || card.rarity === rarityFilter;
+          return matchQuery && matchCategory && matchRarity;
+        });
+      }, [cards, searchQuery, categoryFilter, rarityFilter]);
+
+      // Coordinates grouped
+      const coordGroups = useMemo(() => {
+        const groups = {};
+        cards.forEach(card => {
+          const coordName = card.coord || 'その他';
+          if (!groups[coordName]) groups[coordName] = [];
+          groups[coordName].push(card);
+        });
+        return groups;
+      }, [cards]);
+
+      // Progress Stats
+      const totalOwned = cards.filter(c => c.count > 0).length;
+      const totalCards = cards.length;
+      const progressPct = totalCards > 0 ? Math.round((totalOwned / totalCards) * 100) : 0;
+
       return (
-        <div className="max-w-md mx-auto bg-pink-50 min-h-screen px-4 py-4">
-          <div className="flex justify-between items-center mb-4">
-            <h1 className="text-xl font-bold text-gray-800">アイカツカード帳 ✦</h1>
-            <button onClick={() => setIsAddModalOpen(true)} className="bg-pink-500 text-white px-3 py-1.5 rounded-xl font-bold text-xs shadow-sm">
-              + カード追加
-            </button>
-          </div>
-
-          {loading ? (
-            <div className="text-center py-10 text-gray-400 font-bold">読み込み中...</div>
-          ) : cards.length === 0 ? (
-            <div className="text-center py-10 text-gray-400 text-xs">
-              まだカードが登録されていません。<br/>右上から追加してください！
+        <div className={`min-h-screen ${themeStyle.bg} transition-colors duration-200`}>
+          <div className="max-w-md mx-auto px-4 py-4">
+            
+            {/* Header */}
+            <div className="flex justify-between items-center mb-4">
+              <div className="flex items-center space-x-2">
+                <span className={`w-7 h-7 rounded-lg ${themeStyle.primary} text-white flex items-center justify-center font-bold text-xs`}>
+                  <i className="fa-solid fa-heart"></i>
+                </span>
+                <h1 className="text-lg font-extrabold text-gray-800">アイカツカード帳 ✨</h1>
+              </div>
+              <button onClick={() => setIsAddModalOpen(true)} className={`${themeStyle.primary} text-white px-3 py-1.5 rounded-xl font-bold text-xs shadow-sm`}>
+                + 追加
+              </button>
             </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-3">
-              {cards.map(card => (
-                <div key={card.id} className="bg-white rounded-2xl p-3 shadow-sm border border-gray-50 flex flex-col justify-between">
-                  <div>
-                    <img src={card.img_url || 'https://via.placeholder.com/150/e0e0e0/ffffff?text=No+Image'} className="w-full h-40 object-cover rounded-xl mb-2" />
-                    <div className="flex items-center space-x-1 mb-1">
-                      <span className="font-bold text-xs">{card.card_id}</span>
-                      <span className="bg-pink-500 text-white text-[10px] px-1 rounded font-bold">{card.rarity}</span>
-                    </div>
-                    <div className="text-xs font-semibold text-gray-700 truncate mb-2">{card.name}</div>
-                  </div>
 
-                  <div className="bg-pink-50 rounded-xl flex items-center justify-between p-1">
-                    <button onClick={() => updateCount(card.id, -1, card.count)} className="w-7 h-7 bg-white rounded-lg text-pink-500 font-bold">-</button>
-                    <span className="text-xs font-bold">{card.count} 枚</span>
-                    <button onClick={() => updateCount(card.id, 1, card.count)} className="w-7 h-7 bg-white rounded-lg text-pink-500 font-bold">+</button>
+            {/* Navigation Tabs */}
+            <div className="bg-white p-1 rounded-2xl shadow-sm border border-gray-100 flex justify-between mb-4 text-xs font-bold text-gray-500">
+              <button onClick={() => setActiveTab('cards')} className={`flex-1 py-2 rounded-xl transition ${activeTab === 'cards' ? themeStyle.activeTab : ''}`}>
+                <i className="fa-solid fa-square-poll-vertical mr-1"></i>カード
+              </button>
+              <button onClick={() => setActiveTab('trade')} className={`flex-1 py-2 rounded-xl transition ${activeTab === 'trade' ? themeStyle.activeTab : ''}`}>
+                <i className="fa-solid fa-right-left mr-1"></i>譲・求
+              </button>
+              <button onClick={() => setActiveTab('coord')} className={`flex-1 py-2 rounded-xl transition ${activeTab === 'coord' ? themeStyle.activeTab : ''}`}>
+                <i className="fa-solid fa-shirt mr-1"></i>コーデ
+              </button>
+              <button onClick={() => setActiveTab('settings')} className={`flex-1 py-2 rounded-xl transition ${activeTab === 'settings' ? themeStyle.activeTab : ''}`}>
+                <i className="fa-solid fa-gear mr-1"></i>設定
+              </button>
+            </div>
+
+            {/* TAB 1: CARDS */}
+            {activeTab === 'cards' && (
+              <div>
+                {/* Stats Card */}
+                <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 mb-4">
+                  <div className="flex justify-between items-baseline mb-1">
+                    <span className="text-xs font-bold text-gray-400">収集率</span>
+                    <span className="text-xs font-bold text-gray-500">{totalOwned}/{totalCards} 種 ({progressPct}%)</span>
+                  </div>
+                  <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden mb-3">
+                    <div className={`h-2 ${themeStyle.primary} transition-all duration-300`} style={{ width: `${progressPct}%` }}></div>
+                  </div>
+                  <div className="flex justify-around text-center text-xs font-bold">
+                    <div>
+                      <div className="text-gray-400 text-[10px]">所持</div>
+                      <div className="text-gray-700">{totalOwned}</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-400 text-[10px]">譲れる</div>
+                      <div className="text-emerald-500">{cards.filter(c=>c.give>0).length}</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-400 text-[10px]">欲しい</div>
+                      <div className="text-pink-500">{cards.filter(c=>c.want).length}</div>
+                    </div>
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
 
-          {isAddModalOpen && (
-            <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-              <div className="bg-white rounded-3xl p-5 w-full max-w-sm shadow-xl relative">
-                <button onClick={() => setIsAddModalOpen(false)} className="absolute top-4 right-4 text-gray-400">✕</button>
-                <h3 className="font-bold text-lg mb-4">カード登録</h3>
-                <form onSubmit={handleAddCard} className="space-y-3 text-xs font-bold text-gray-600">
-                  <input type="text" placeholder="カード番号 (例: E1-01)" value={newCard.card_id} onChange={e=>setNewCard({...newCard, card_id: e.target.value})} className="w-full p-2.5 rounded-xl border bg-gray-50" required />
-                  <input type="text" placeholder="カード名" value={newCard.name} onChange={e=>setNewCard({...newCard, name: e.target.value})} className="w-full p-2.5 rounded-xl border bg-gray-50" required />
-                  <input type="text" placeholder="画像URL (任意)" value={newCard.img_url} onChange={e=>setNewCard({...newCard, img_url: e.target.value})} className="w-full p-2.5 rounded-xl border bg-gray-50" />
-                  <button type="submit" className="w-full bg-pink-500 text-white py-3 rounded-xl font-bold">登録する</button>
-                </form>
+                {/* Filters */}
+                <div className="bg-white rounded-2xl p-3 shadow-sm border border-gray-100 mb-4 space-y-2">
+                  <input
+                    type="text"
+                    placeholder="カード番号・名前・コーデ名で検索..."
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    className="w-full bg-gray-50 text-xs px-3 py-2 rounded-xl border border-gray-100 focus:outline-none"
+                  />
+                  <div className="grid grid-cols-2 gap-2 text-xs font-bold text-gray-600">
+                    <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} className="bg-gray-50 p-2 rounded-xl border border-gray-100">
+                      <option>すべて</option><option>トップス</option><option>ボトムス</option><option>シューズ</option><option>アクセサリー</option>
+                    </select>
+                    <select value={rarityFilter} onChange={e => setRarityFilter(e.target.value)} className="bg-gray-50 p-2 rounded-xl border border-gray-100">
+                      <option>すべて</option><option>PR</option><option>R</option><option>N</option><option>CP</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Card List */}
+                {loading ? (
+                  <div className="text-center py-10 text-gray-400 font-bold">読み込み中...</div>
+                ) : filteredCards.length === 0 ? (
+                  <div className="text-center py-10 text-gray-400 text-xs font-bold">該当するカードがありません</div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    {filteredCards.map(card => (
+                      <div key={card.id} className="bg-white rounded-2xl p-3 shadow-sm border border-gray-100 flex flex-col justify-between">
+                        <div>
+                          <div className="relative mb-2">
+                            <img src={card.img_url || 'https://via.placeholder.com/150/f0f0f0/cccccc?text=No+Image'} className="w-full h-36 object-cover rounded-xl" />
+                            {card.count === 0 && (
+                              <span className="absolute top-2 left-2 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded-md font-bold">未所持</span>
+                            )}
+                          </div>
+                          <div className="flex items-center space-x-1 mb-1">
+                            <span className="font-bold text-xs">{card.card_id}</span>
+                            <span className={`text-[9px] text-white px-1.5 py-0.5 rounded font-bold ${themeStyle.primary}`}>{card.rarity}</span>
+                          </div>
+                          <div className="text-xs font-bold text-gray-700 truncate mb-2">{card.name}</div>
+                        </div>
+
+                        {/* Controls */}
+                        <div className="space-y-1.5">
+                          <div className="bg-gray-50 rounded-xl flex items-center justify-between p-1">
+                            <button onClick={() => updateCardState(card.id, { count: Math.max(0, card.count - 1) })} className="w-6 h-6 bg-white shadow-xs rounded-lg text-gray-500 font-bold">-</button>
+                            <span className="text-xs font-bold">{card.count} 枚</span>
+                            <button onClick={() => updateCardState(card.id, { count: card.count + 1 })} className={`w-6 h-6 bg-white shadow-xs rounded-lg ${themeStyle.text} font-bold`}>+</button>
+                          </div>
+
+                          <div className="flex space-x-1">
+                            <button 
+                              onClick={() => updateCardState(card.id, { give: card.give > 0 ? 0 : 1 })}
+                              className={`flex-1 py-1 rounded-lg text-[10px] font-bold border transition ${card.give > 0 ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-white text-gray-400 border-gray-200'}`}
+                            >
+                              譲 {card.give}
+                            </button>
+                            <button 
+                              onClick={() => updateCardState(card.id, { want: !card.want })}
+                              className={`flex-1 py-1 rounded-lg text-[10px] font-bold border transition ${card.want ? 'bg-pink-500 text-white border-pink-500' : 'bg-white text-gray-400 border-gray-200'}`}
+                            >
+                              ♡ 求
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            )}
+
+            {/* TAB 2: TRADE (譲・求) */}
+            {activeTab === 'trade' && (
+              <div className="space-y-4">
+                <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+                  <h3 className="font-bold text-sm text-pink-500 mb-2">♡ 求めリスト ({cards.filter(c=>c.want).length})</h3>
+                  <div className="grid grid-cols-2 gap-2">
+                    {cards.filter(c=>c.want).map(c => (
+                      <div key={c.id} className="bg-pink-50 rounded-xl p-2 flex items-center space-x-2 text-xs font-bold">
+                        <img src={c.img_url || 'https://via.placeholder.com/50'} className="w-10 h-10 object-cover rounded-lg" />
+                        <div className="truncate">
+                          <div className="text-[10px] text-pink-500">{c.card_id}</div>
+                          <div className="truncate">{c.name}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+                  <h3 className="font-bold text-sm text-emerald-500 mb-2">⇄ 譲りリスト ({cards.filter(c=>c.give>0).length})</h3>
+                  <div className="grid grid-cols-2 gap-2">
+                    {cards.filter(c=>c.give>0).map(c => (
+                      <div key={c.id} className="bg-emerald-50 rounded-xl p-2 flex items-center space-x-2 text-xs font-bold">
+                        <img src={c.img_url || 'https://via.placeholder.com/50'} className="w-10 h-10 object-cover rounded-lg" />
+                        <div className="truncate">
+                          <div className="text-[10px] text-emerald-500">{c.card_id} (余り{c.give}枚)</div>
+                          <div className="truncate">{c.name}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 3: COORDINATE */}
+            {activeTab === 'coord' && (
+              <div className="space-y-4">
+                {Object.entries(coordGroups).map(([coordName, groupCards]) => {
+                  const ownedCount = groupCards.filter(c=>c.count>0).length;
+                  const isComplete = ownedCount === groupCards.length;
+
+                  return (
+                    <div key={coordName} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+                      <div className="flex justify-between items-center mb-3">
+                        <h3 className="font-bold text-sm text-gray-800">{coordName}</h3>
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${isComplete ? 'bg-emerald-100 text-emerald-600' : 'bg-gray-100 text-gray-500'}`}>
+                          {ownedCount} / {groupCards.length}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-4 gap-2">
+                        {groupCards.map(c => (
+                          <div key={c.id} className="text-center">
+                            <img src={c.img_url || 'https://via.placeholder.com/100'} className={`w-full h-20 object-cover rounded-lg mb-1 ${c.count === 0 ? 'opacity-40 grayscale' : ''}`} />
+                            <div className="text-[9px] font-bold text-gray-500 truncate">{c.card_id}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* TAB 4: SETTINGS */}
+            {activeTab === 'settings' && (
+              <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 space-y-4">
+                <h3 className="font-bold text-sm text-gray-800">カード帳の設定</h3>
+                <div>
+                  <label className="text-xs font-bold text-gray-500 block mb-2">テーマ色変更</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {Object.keys(THEMES).map(tName => (
+                      <button
+                        key={tName}
+                        onClick={() => setTheme(tName)}
+                        className={`py-2 rounded-xl font-bold text-xs capitalize border transition ${theme === tName ? 'border-gray-800 shadow-sm' : 'border-gray-100'}`}
+                      >
+                        {tName}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Modal: Add Card */}
+            {isAddModalOpen && (
+              <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+                <div className="bg-white rounded-3xl p-5 w-full max-w-sm shadow-xl relative">
+                  <button onClick={() => setIsAddModalOpen(false)} className="absolute top-4 right-4 text-gray-400">✕</button>
+                  <h3 className="font-bold text-lg mb-4">カード登録</h3>
+                  <form onSubmit={handleAddCard} className="space-y-3 text-xs font-bold text-gray-600">
+                    <input type="text" placeholder="カード番号 (例: E1-01)" value={newCard.card_id} onChange={e=>setNewCard({...newCard, card_id: e.target.value})} className="w-full p-2.5 rounded-xl border bg-gray-50" required />
+                    <input type="text" placeholder="カード名" value={newCard.name} onChange={e=>setNewCard({...newCard, name: e.target.value})} className="w-full p-2.5 rounded-xl border bg-gray-50" required />
+                    <input type="text" placeholder="コーデ名 (例: オーロラキス)" value={newCard.coord} onChange={e=>setNewCard({...newCard, coord: e.target.value})} className="w-full p-2.5 rounded-xl border bg-gray-50" />
+                    <div className="grid grid-cols-2 gap-2">
+                      <select value={newCard.category} onChange={e=>setNewCard({...newCard, category: e.target.value})} className="p-2.5 rounded-xl border bg-gray-50">
+                        <option>トップス</option><option>ボトムス</option><option>シューズ</option><option>アクセサリー</option>
+                      </select>
+                      <select value={newCard.rarity} onChange={e=>setNewCard({...newCard, rarity: e.target.value})} className="p-2.5 rounded-xl border bg-gray-50">
+                        <option>PR</option><option>R</option><option>N</option><option>CP</option>
+                      </select>
+                    </div>
+                    <input type="text" placeholder="画像URL (任意)" value={newCard.img_url} onChange={e=>setNewCard({...newCard, img_url: e.target.value})} className="w-full p-2.5 rounded-xl border bg-gray-50" />
+                    <button type="submit" className={`w-full ${themeStyle.primary} text-white py-3 rounded-xl font-bold`}>登録する</button>
+                  </form>
+                </div>
+              </div>
+            )}
+
+          </div>
         </div>
       );
     }
